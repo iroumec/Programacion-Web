@@ -1,37 +1,71 @@
 ﻿package main
 
 import (
+	"compress/gzip"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 )
 
+const (
+	port    = ":8080"       // Puerto que se escucha.
+	fileDir = "T1/E3/files" // Directorio relativo con los archivos estáticos. Relativo adonde se ejecuta go run.
+)
+
+// gzipMiddleware comprime la respuesta si el cliente acepta gzip y el archivo existe.
+func gzipMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+		// Se verifica si el cliente acepta gzip.
+		if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Se verifica si el archivo existe.
+		path := filepath.Join(fileDir, filepath.Clean(r.URL.Path))
+		info, err := os.Stat(path)
+		if err != nil || info.IsDir() {
+
+			// Archivo no existe o es directorio: se sirve sin compresión.
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Archivo existe: se aplica gzip.
+		w.Header().Set("Content-Encoding", "gzip")
+		w.Header().Set("Vary", "Accept-Encoding")
+
+		gz := gzip.NewWriter(w)
+		defer gz.Close()
+
+		// Se envuelve ResponseWriter para comprimir la salida.
+		gzw := gzipResponseWriter{ResponseWriter: w, writer: gz}
+		next.ServeHTTP(&gzw, r)
+	})
+}
+
+type gzipResponseWriter struct {
+	http.ResponseWriter
+	writer *gzip.Writer
+}
+
+func (w *gzipResponseWriter) Write(b []byte) (int, error) {
+	return w.writer.Write(b)
+}
+
 func main() {
-
-	// Se define un directorio que contiene los archivos estáticos.
-	fileDir := "./E3/files"
-
 	// Se crea un manejador (handler) de servidor de archivos.
-	// http.Dir convierte la ruta del directorio en un sistema de archivos HTTP.
-	// http.FileServer crea un manejador que sirve archivos
-	// ¡Automáticamente sirve index.html para directorios!
 	fileServer := http.FileServer(http.Dir(fileDir))
 
-	// Usamos http.Handle porque fileServer es un http.Handler.
-	http.Handle("/", fileServer)
+	// Se envuelve en un gzip middleware.
+	http.Handle("/", gzipMiddleware(fileServer))
 
-	// ----------------------------------------------------------------------------------------- //
-	// Poner a correr el servidor.
-	// ----------------------------------------------------------------------------------------- //
-
-	// Definimos el puerto en el que estaremos escuchando.
-	port := ":8080"
-
-	// Mensaje que se mostrará al poner a correr el servidor.
 	fmt.Printf("Servidor escuchando en http://localhost%s\n", port)
 
-	// Se inicia el servidor HTTP.
-	err := http.ListenAndServe(port, nil)
-	if err != nil {
+	if err := http.ListenAndServe(port, nil); err != nil {
 		fmt.Printf("Error al iniciar el servidor: %s\n", err)
 	}
 }

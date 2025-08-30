@@ -5,6 +5,14 @@ import (
 	"net/http"
 )
 
+const (
+	port        = ":8080"         // Puerte que se escucha.
+	rootPath    = "/"             // Ruta raíz
+	contactPath = "/contacto"     // Ruta contacto
+	contactGet  = "/contacto-get" // Ruta contacto GET
+	contentType = "text/html; charset=utf-8"
+)
+
 func main() {
 
 	// Se define el contenido HTML.
@@ -18,15 +26,15 @@ func main() {
 		`
 
 	// Se registra un manejador (handler) para la ruta raíz "/"
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc(rootPath, func(w http.ResponseWriter, r *http.Request) {
 
-		if esRutaInvalida(w, r, "/", http.MethodGet) {
+		if esRutaInvalida(w, r, rootPath, http.MethodGet) {
 			return
 		}
 
 		// Se establece la cabecera Content-Type.
 		// Es decir, el tipo de contenido que se recibirá y la codificación.
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Content-Type", contentType)
 
 		// Se escribe en HTML la respuesta.
 		// La biblioteca lo hace automáticamente.
@@ -34,24 +42,20 @@ func main() {
 	})
 
 	// No puede haber dos handle asociados a una misma ruta.
-	http.HandleFunc("/contacto", manageForm)
+	http.HandleFunc(contactPath, manageForm)
 
 	// Variación para probar.
-	http.HandleFunc("/contacto-get", manageFormGet)
+	http.HandleFunc(contactGet, manageFormGet)
 
 	// ----------------------------------------------------------------------------------------- //
 	// Poner a correr el servidor.
 	// ----------------------------------------------------------------------------------------- //
 
-	// Definimos el puerto en el que estaremos escuchando.
-	port := ":8080"
-
 	// Mensaje que se mostrará al poner a correr el servidor.
 	fmt.Printf("Servidor escuchando en http://localhost%s\n", port)
 
 	// Se inicia el servidor HTTP.
-	err := http.ListenAndServe(port, nil)
-	if err != nil {
+	if err := http.ListenAndServe(port, nil); err != nil {
 		fmt.Printf("Error al iniciar el servidor: %s\n", err)
 	}
 }
@@ -59,7 +63,7 @@ func main() {
 func esRutaInvalida(w http.ResponseWriter, r *http.Request, path string, method string) bool {
 
 	if r.URL.Path != path || r.Method != method {
-		http.NotFound(w, r)
+		http.Error(w, "404 página no encontrada", http.StatusNotFound)
 		return true
 	}
 
@@ -70,8 +74,10 @@ func manageForm(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == http.MethodGet {
 		serveForm(w, r)
-	} else {
+	} else if r.Method == http.MethodPost {
 		handleLogin(w, r)
+	} else {
+		http.Error(w, "Método no permitido", http.StatusMethodNotAllowed)
 	}
 }
 
@@ -79,7 +85,7 @@ func manageForm(w http.ResponseWriter, r *http.Request) {
 // Ver "Tipos de Inputs en HTML" --> https://www.w3schools.com/html/html_form_input_types.asp
 func serveForm(w http.ResponseWriter, r *http.Request) {
 
-	if esRutaInvalida(w, r, "/contacto", http.MethodGet) {
+	if esRutaInvalida(w, r, contactPath, http.MethodGet) {
 		return
 	}
 
@@ -100,21 +106,13 @@ func serveForm(w http.ResponseWriter, r *http.Request) {
 		</html>
 		`
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-
+	w.Header().Set("Content-Type", contentType)
 	fmt.Fprint(w, loginForm)
 }
 
 // handleLogin: Maneja POST /login para procesar datos
 // También sirve si es GET.
 func handleLogin(w http.ResponseWriter, r *http.Request) {
-
-	/*
-		if r.Method != http.MethodPost {
-			http.Error(w, "Método no permitido", http.StatusMethodNotAllowed)
-			return
-		}
-	*/
 
 	// Se parsean los datos del formulario (crucial)
 	if err := r.ParseForm(); err != nil {
@@ -132,7 +130,7 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Se genera y se envía la respuesta HTML.
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Type", contentType)
 
 	salida := `
 		<!DOCTYPE html>
@@ -151,20 +149,21 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 // Variación Get.
 func manageFormGet(w http.ResponseWriter, r *http.Request) {
 
-	if r.Method == http.MethodGet {
-		if r.URL.Path == "/contacto-get" { // Path solo retorna la ruta.
-			if r.URL.RawQuery != "" { // RawQuery retorna todo lo que está desspués del "?".
-				handleLogin(w, r)
-			} else {
-				serveFormGet(w, r)
-			}
-		}
+	if r.Method != http.MethodGet {
+		http.Error(w, "Método no permitido", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if r.URL.RawQuery != "" {
+		handleLogin(w, r)
+	} else {
+		serveFormGet(w, r)
 	}
 }
 
 func serveFormGet(w http.ResponseWriter, r *http.Request) {
 
-	if esRutaInvalida(w, r, "/contacto-get", http.MethodGet) {
+	if esRutaInvalida(w, r, contactGet, http.MethodGet) {
 		return
 	}
 
@@ -185,7 +184,6 @@ func serveFormGet(w http.ResponseWriter, r *http.Request) {
 		</html>
 		`
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-
+	w.Header().Set("Content-Type", contentType)
 	fmt.Fprint(w, loginForm)
 }
