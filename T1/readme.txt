@@ -1,1 +1,0 @@
-﻿Los archivos ".go" deben estar en distintas carpetas, porque, si no, no pueden repetirse los nombres.
